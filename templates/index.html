@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>NeuroShield — Autonomous Self-Healing Network</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Mono:wght@300;400;500&family=Outfit:wght@300;400;600;900&display=swap" rel="stylesheet"/>
+<style>
+:root {
+  --ink:#0d0f14;--ink2:#13161e;--ink3:#1a1f2e;
+  --glass:rgba(255,255,255,0.03);--rim:rgba(255,255,255,0.07);--rim2:rgba(255,255,255,0.14);
+  --lime:#b8ff57;--lime2:#d4ff8a;--teal:#00e5c3;
+  --sky:#38bdf8;--rose:#ff4f6d;--amber:#ffb830;--violet:#a78bfa;
+  --txt:#e2e8f0;--muted:#64748b;--dim:#334155;
+  --ff-head:'Outfit',sans-serif;--ff-ui:'Syne',sans-serif;--ff-mono:'DM Mono',monospace;
+  --r:10px;--r-sm:6px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--ink);color:var(--txt);font-family:var(--ff-ui);min-height:100vh;overflow-x:hidden}
+#bgCanvas{position:fixed;inset:0;z-index:0;opacity:.35;pointer-events:none}
+body::after{content:'';position:fixed;inset:0;z-index:1;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");background-size:160px;opacity:.025;pointer-events:none}
+.app{position:relative;z-index:2;display:grid;grid-template-rows:auto 1fr;min-height:100vh}
+
+/* ── LOADING OVERLAY ── */
+.loading-overlay{position:fixed;inset:0;z-index:300;background:rgba(13,15,20,.95);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;backdrop-filter:blur(12px);transition:opacity .4s}
+.loading-overlay.hidden{display:none}
+.spinner{width:52px;height:52px;border:3px solid var(--rim2);border-top-color:var(--lime);border-radius:50%;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.load-title{font-family:var(--ff-mono);font-size:13px;color:var(--lime);letter-spacing:3px;text-transform:uppercase}
+.load-sub{font-family:var(--ff-mono);font-size:10px;color:var(--muted);max-width:360px;text-align:center;line-height:1.7}
+.load-tip{font-family:var(--ff-mono);font-size:9px;color:var(--dim);margin-top:4px}
+
+/* ── TOPBAR ── */
+.topbar{display:flex;align-items:center;padding:0 32px;height:64px;border-bottom:1px solid var(--rim);background:rgba(13,15,20,.8);backdrop-filter:blur(20px);position:sticky;top:0;z-index:100}
+.brand{display:flex;align-items:center;gap:14px;margin-right:48px}
+.brand-mark svg{width:36px;height:36px}
+.brand-name{font-family:var(--ff-head);font-weight:900;font-size:20px;letter-spacing:-.5px}
+.brand-name span{color:var(--lime)}
+.nav-tabs{display:flex;align-items:stretch;flex:1;height:100%}
+.nav-tab{display:flex;align-items:center;gap:9px;padding:0 22px;height:100%;border:none;background:transparent;color:var(--muted);cursor:pointer;font-family:var(--ff-ui);font-size:13px;font-weight:700;letter-spacing:.5px;border-bottom:2px solid transparent;transition:color .2s,border-color .2s}
+.nav-tab:hover{color:var(--txt)}
+.nav-tab.active{color:var(--txt);border-bottom-color:var(--lime)}
+.tab-num{width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;background:var(--rim);color:var(--muted);transition:background .2s,color .2s}
+.nav-tab.active .tab-num,.nav-tab:hover .tab-num{background:var(--lime);color:var(--ink)}
+.topbar-right{display:flex;align-items:center;gap:12px;margin-left:auto}
+.pill{display:flex;align-items:center;gap:7px;padding:5px 12px;border-radius:999px;border:1px solid var(--rim);font-family:var(--ff-mono);font-size:10px;color:var(--muted);background:var(--glass)}
+.dot{width:6px;height:6px;border-radius:50%;animation:pulse-dot 2s ease-in-out infinite}
+.dot.green{background:var(--lime);box-shadow:0 0 8px var(--lime)}
+.dot.red{background:var(--rose);box-shadow:0 0 8px var(--rose)}
+@keyframes pulse-dot{0%,100%{opacity:1}50%{opacity:.3}}
+.clock{font-family:var(--ff-mono);font-size:12px;color:var(--muted)}
+.btn-clear-cache{font-family:var(--ff-mono);font-size:9px;letter-spacing:1px;padding:4px 10px;border-radius:4px;border:1px solid var(--rim);background:var(--glass);color:var(--muted);cursor:pointer;transition:all .2s}
+.btn-clear-cache:hover{border-color:var(--rose);color:var(--rose)}
+
+/* ── PAGES ── */
+.page{display:none;animation:fadeIn .35s ease}
+.page.active{display:block}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+
+/* ── OVERVIEW ── */
+.overview-grid{display:grid;grid-template-columns:320px 1fr;gap:20px;padding:24px 32px;max-width:1400px;margin:0 auto}
+.card{background:var(--ink2);border:1px solid var(--rim);border-radius:var(--r);padding:24px;position:relative;overflow:hidden}
+.card::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--rim2) 50%,transparent)}
+.card-label{font-family:var(--ff-mono);font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:16px;display:flex;align-items:center;gap:8px}
+.card-label::before{content:'';width:16px;height:1px;background:var(--lime);opacity:.6}
+.hero-card{grid-row:span 2;display:flex;flex-direction:column;gap:20px}
+.system-status{background:linear-gradient(135deg,rgba(184,255,87,.08),rgba(0,229,195,.05));border:1px solid rgba(184,255,87,.2);border-radius:var(--r);padding:28px 24px;text-align:center;position:relative;overflow:hidden}
+.status-icon{font-size:48px;margin-bottom:12px;filter:drop-shadow(0 0 16px rgba(184,255,87,.4))}
+.status-title{font-family:var(--ff-head);font-weight:900;font-size:13px;letter-spacing:3px;text-transform:uppercase;color:var(--lime);margin-bottom:4px}
+.status-sub{font-family:var(--ff-mono);font-size:11px;color:var(--muted)}
+.stat-list{display:flex;flex-direction:column;gap:12px}
+.stat-item{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:var(--glass);border:1px solid var(--rim);border-radius:var(--r-sm);transition:border-color .2s,background .2s}
+.stat-item:hover{border-color:var(--rim2);background:rgba(255,255,255,.05)}
+.stat-item-left{display:flex;flex-direction:column;gap:3px}
+.stat-item-label{font-family:var(--ff-mono);font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted)}
+.stat-item-val{font-family:var(--ff-head);font-weight:900;font-size:22px}
+.stat-item-val.lime{color:var(--lime)}.stat-item-val.teal{color:var(--teal)}.stat-item-val.rose{color:var(--rose)}.stat-item-val.amber{color:var(--amber)}
+.stat-badge{font-family:var(--ff-mono);font-size:10px;padding:4px 10px;border-radius:999px}
+.stat-badge.up{background:rgba(184,255,87,.12);color:var(--lime);border:1px solid rgba(184,255,87,.2)}
+.stat-badge.down{background:rgba(255,79,109,.1);color:var(--rose);border:1px solid rgba(255,79,109,.2)}
+.stat-badge.neutral{background:var(--glass);color:var(--muted);border:1px solid var(--rim)}
+
+/* ── PIPELINE ── */
+.pipeline-card{grid-column:2}
+.pipeline{display:flex;align-items:center;margin-top:8px}
+.pipe-node{flex:1;display:flex;flex-direction:column;align-items:center;gap:10px;padding:20px 12px;border-radius:var(--r-sm);border:1px solid var(--rim);background:var(--glass);position:relative;transition:all .25s}
+.pipe-node:hover{border-color:var(--rim2);transform:translateY(-2px)}
+.pipe-node.p1{border-color:rgba(184,255,87,.2);background:rgba(184,255,87,.03)}
+.pipe-node.p2{border-color:rgba(0,229,195,.2);background:rgba(0,229,195,.03)}
+.pipe-node.p3{border-color:rgba(255,184,48,.2);background:rgba(255,184,48,.03)}
+.pipe-node.out{border-color:rgba(0,229,195,.25);background:rgba(0,229,195,.05)}
+.pipe-icon{font-size:28px}
+.pipe-title{font-family:var(--ff-ui);font-size:12px;font-weight:700;text-align:center}
+.pipe-sub{font-family:var(--ff-mono);font-size:9px;color:var(--muted);text-align:center;line-height:1.5}
+.pipe-chip{font-family:var(--ff-mono);font-size:9px;padding:3px 8px;border-radius:4px;position:absolute;top:-10px;left:50%;transform:translateX(-50%);white-space:nowrap}
+.pipe-chip.lime{background:rgba(184,255,87,.15);color:var(--lime);border:1px solid rgba(184,255,87,.3)}
+.pipe-chip.teal{background:rgba(0,229,195,.12);color:var(--teal);border:1px solid rgba(0,229,195,.25)}
+.pipe-chip.amber{background:rgba(255,184,48,.12);color:var(--amber);border:1px solid rgba(255,184,48,.25)}
+.pipe-arrow{display:flex;flex-direction:column;align-items:center;gap:2px;padding:0 8px;flex-shrink:0}
+.pipe-arrow-line{width:32px;height:1px;background:var(--dim);position:relative}
+.pipe-arrow-line::after{content:'';position:absolute;right:-4px;top:-3px;border:4px solid transparent;border-left:5px solid var(--dim)}
+.pipe-arrow-cond{font-family:var(--ff-mono);font-size:8px;color:var(--rose);white-space:nowrap}
+
+/* ── FEED ── */
+.feed-card{grid-column:2}
+.feed-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.feed-controls{display:flex;gap:8px}
+.btn{display:inline-flex;align-items:center;gap:7px;padding:8px 16px;border-radius:var(--r-sm);font-family:var(--ff-ui);font-size:12px;font-weight:700;cursor:pointer;border:none;transition:all .2s}
+.btn-lime{background:var(--lime);color:var(--ink)}
+.btn-lime:hover{background:var(--lime2);transform:translateY(-1px);box-shadow:0 4px 20px rgba(184,255,87,.3)}
+.btn-ghost{background:var(--glass);color:var(--muted);border:1px solid var(--rim)}
+.btn-ghost:hover{background:var(--rim);color:var(--txt)}
+.feed-stream{height:180px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;padding-right:4px}
+.feed-stream::-webkit-scrollbar{width:3px}
+.feed-stream::-webkit-scrollbar-thumb{background:var(--dim);border-radius:2px}
+.feed-row{display:grid;grid-template-columns:58px 70px 1fr 80px 70px;gap:8px;align-items:center;padding:6px 10px;border-radius:6px;font-family:var(--ff-mono);font-size:10px;background:var(--glass);border:1px solid transparent;animation:rowIn .25s ease}
+.feed-row:hover{border-color:var(--rim)}
+.feed-row.anomaly{background:rgba(255,79,109,.05)}
+@keyframes rowIn{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:translateX(0)}}
+.feed-time{color:var(--muted)}.feed-ip{color:var(--sky)}.feed-class{color:var(--amber)}
+.feed-badge{padding:2px 7px;border-radius:4px;text-align:center;font-size:9px;letter-spacing:1px}
+.feed-badge.ok{background:rgba(184,255,87,.12);color:var(--lime)}
+.feed-badge.bad{background:rgba(255,79,109,.12);color:var(--rose)}
+.feed-act{text-align:right;font-weight:500}
+.feed-act.allow{color:var(--lime)}.feed-act.block{color:var(--rose)}.feed-act.alert{color:var(--amber)}
+
+/* ── PHASE PAGES ── */
+.phase-layout{display:grid;grid-template-columns:1fr 1fr;gap:20px;padding:24px 32px;max-width:1400px;margin:0 auto}
+.phase-layout.three-col{grid-template-columns:1fr 1fr 1fr}
+.span-2{grid-column:span 2}
+.phase-hero{padding:32px;background:var(--ink2);border:1px solid var(--rim);border-radius:var(--r);position:relative;overflow:hidden}
+.phase-hero-num{font-family:var(--ff-head);font-weight:900;font-size:96px;line-height:1;letter-spacing:-4px;position:absolute;right:24px;top:16px;opacity:.05;pointer-events:none}
+.phase-tag{display:inline-flex;align-items:center;gap:6px;font-family:var(--ff-mono);font-size:10px;letter-spacing:2px;text-transform:uppercase;margin-bottom:14px;padding:4px 12px;border-radius:4px}
+.phase-tag.lime{background:rgba(184,255,87,.1);color:var(--lime);border:1px solid rgba(184,255,87,.2)}
+.phase-tag.teal{background:rgba(0,229,195,.1);color:var(--teal);border:1px solid rgba(0,229,195,.2)}
+.phase-tag.amber{background:rgba(255,184,48,.1);color:var(--amber);border:1px solid rgba(255,184,48,.2)}
+.phase-hero-title{font-family:var(--ff-head);font-weight:900;font-size:28px;line-height:1.15;letter-spacing:-.5px;margin-bottom:10px}
+.phase-hero-desc{font-family:var(--ff-ui);font-size:13px;color:var(--muted);line-height:1.6;max-width:480px}
+.acc-big{font-family:var(--ff-head);font-weight:900;font-size:52px;letter-spacing:-2px;line-height:1}
+.acc-sub{font-family:var(--ff-mono);font-size:10px;color:var(--muted);letter-spacing:2px;margin-top:4px}
+.phase-hero .acc-ring{margin-top:20px}
+
+/* ── CONFUSION MATRIX ── */
+.cm-grid{display:grid;grid-template-columns:56px 1fr 1fr;grid-template-rows:24px 1fr 1fr;gap:4px;margin-top:12px}
+.cm-h{display:flex;align-items:center;justify-content:center;font-family:var(--ff-mono);font-size:9px;color:var(--muted)}
+.cm-cell-box{padding:16px 8px;border-radius:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px}
+.cm-cell-val{font-family:var(--ff-head);font-size:22px;font-weight:900}
+.cm-cell-name{font-family:var(--ff-mono);font-size:8px;color:var(--muted);letter-spacing:1px}
+.cm-tp{background:rgba(184,255,87,.1);border:1px solid rgba(184,255,87,.2)}.cm-tp .cm-cell-val{color:var(--lime)}
+.cm-tn{background:rgba(184,255,87,.07);border:1px solid rgba(184,255,87,.15)}.cm-tn .cm-cell-val{color:var(--lime)}
+.cm-fp{background:rgba(255,79,109,.1);border:1px solid rgba(255,79,109,.2)}.cm-fp .cm-cell-val{color:var(--rose)}
+.cm-fn{background:rgba(255,184,48,.08);border:1px solid rgba(255,184,48,.15)}.cm-fn .cm-cell-val{color:var(--amber)}
+
+/* ── METRICS TABLE ── */
+.mtable{width:100%;border-collapse:collapse;margin-top:8px}
+.mtable th{font-family:var(--ff-mono);font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);text-align:left;padding:8px 10px;border-bottom:1px solid var(--rim)}
+.mtable td{padding:10px;font-family:var(--ff-mono);font-size:12px;border-bottom:1px solid rgba(255,255,255,.03)}
+.mtable tr:hover td{background:var(--glass)}
+.mbar-wrap{height:4px;background:var(--dim);border-radius:2px;width:60px;display:inline-block;vertical-align:middle;margin-right:6px}
+.mbar{height:100%;border-radius:2px}
+
+/* ── ATTACK DIST ── */
+.adist{display:flex;flex-direction:column;gap:10px;margin-top:4px}
+.adist-row{display:flex;align-items:center;gap:12px}
+.adist-name{font-family:var(--ff-mono);font-size:11px;width:60px;flex-shrink:0}
+.adist-track{flex:1;height:20px;background:var(--ink3);border-radius:4px;overflow:hidden}
+.adist-fill{height:100%;border-radius:4px;display:flex;align-items:center;padding-left:10px;font-family:var(--ff-mono);font-size:9px;white-space:nowrap;transition:width 1.2s cubic-bezier(.16,1,.3,1)}
+.adist-pct{font-family:var(--ff-mono);font-size:11px;width:44px;text-align:right;flex-shrink:0}
+
+/* ── ANN ARCH ── */
+.arch-diagram{display:flex;align-items:center;justify-content:center;gap:12px;padding:20px 0;flex-wrap:wrap}
+.arch-layer{display:flex;flex-direction:column;align-items:center;gap:8px}
+.arch-layer-nodes{display:flex;flex-direction:column;gap:4px;align-items:center}
+.arch-node{width:14px;height:14px;border-radius:50%;border:2px solid currentColor;background:transparent;transition:all .2s}
+.arch-layer:hover .arch-node{transform:scale(1.2)}
+.arch-lname{font-family:var(--ff-mono);font-size:9px;color:var(--muted);text-align:center}
+.arch-lsize{font-family:var(--ff-head);font-size:13px;font-weight:700}
+.arch-arr{font-size:16px;color:var(--dim);flex-shrink:0;margin-top:-20px}
+
+/* ── Q TABLE ── */
+.qtable{width:100%;border-collapse:collapse}
+.qtable th{font-family:var(--ff-mono);font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);padding:8px 12px;text-align:center;border-bottom:1px solid var(--rim)}
+.qtable td{padding:14px 12px;font-family:var(--ff-mono);font-size:13px;text-align:center;border-bottom:1px solid rgba(255,255,255,.03);font-weight:500}
+.q-best{color:var(--lime);font-weight:700;position:relative}
+.q-best::after{content:'★';position:absolute;top:2px;right:4px;font-size:8px;color:var(--lime);opacity:.5}
+.q-neg{color:var(--rose)}.q-mid{color:var(--amber)}
+.q-state{font-family:var(--ff-ui);font-size:12px;font-weight:700;text-align:left!important}
+.policy-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+.policy-box{padding:18px;border-radius:var(--r-sm);border:1px solid var(--rim);background:var(--glass);display:flex;flex-direction:column;gap:8px}
+.policy-state-label{font-family:var(--ff-mono);font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--muted)}
+.policy-arrow{font-size:18px;color:var(--dim)}
+.policy-action-name{font-family:var(--ff-head);font-size:22px;font-weight:900}
+.policy-action-name.allow{color:var(--lime)}.policy-action-name.block{color:var(--rose)}
+.policy-reward{font-family:var(--ff-mono);font-size:10px;color:var(--muted)}
+.params-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:8px}
+.param-box{padding:14px 12px;border-radius:var(--r-sm);background:var(--glass);border:1px solid var(--rim);text-align:center}
+.param-sym{font-family:var(--ff-mono);font-size:16px;color:var(--violet);margin-bottom:4px}
+.param-val{font-family:var(--ff-head);font-size:20px;font-weight:900}
+.param-name{font-family:var(--ff-mono);font-size:8px;color:var(--muted);letter-spacing:1.5px;margin-top:4px;text-transform:uppercase}
+.rmatrix{width:100%;border-collapse:collapse;margin-top:4px}
+.rmatrix th{font-family:var(--ff-mono);font-size:9px;color:var(--muted);padding:8px 10px;text-align:center;border-bottom:1px solid var(--rim)}
+.rmatrix td{padding:12px 10px;text-align:center;font-family:var(--ff-mono);font-size:14px;font-weight:700;border-bottom:1px solid rgba(255,255,255,.03)}
+.rmatrix td:first-child{text-align:left;font-size:11px}
+.r-pos{color:var(--lime)}.r-neg{color:var(--rose)}.r-mid{color:var(--amber)}
+
+@media(max-width:900px){
+  .overview-grid,.phase-layout{grid-template-columns:1fr;padding:16px}
+  .hero-card{grid-row:auto}
+  .pipeline{flex-wrap:wrap}
+}
+</style>
+</head>
+<body>
+<canvas id="bgCanvas"></canvas>
+
+<!-- LOADING OVERLAY -->
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="spinner"></div>
+  <div class="load-title" id="loadTitle">Connecting…</div>
+  <div class="load-sub" id="loadSub">Starting Flask server and initialising models.</div>
+  <div class="load-tip" id="loadTip">First run trains models (~2 min). Subsequent runs load from disk (~3 sec).</div>
+</div>
+
+<div class="app">
+
+  <!-- TOPBAR -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark">
+        <svg viewBox="0 0 36 36" fill="none">
+          <path d="M18 3L33 11L33 25L18 33L3 25L3 11Z" stroke="#b8ff57" stroke-width="1.5" fill="rgba(184,255,87,0.06)"/>
+          <circle cx="18" cy="18" r="5" stroke="#00e5c3" stroke-width="1.5" fill="rgba(0,229,195,0.1)"/>
+          <circle cx="18" cy="3" r="2" fill="#b8ff57"/><circle cx="33" cy="11" r="2" fill="#00e5c3"/>
+          <circle cx="33" cy="25" r="2" fill="#b8ff57"/><circle cx="18" cy="33" r="2" fill="#00e5c3"/>
+          <circle cx="3" cy="25" r="2" fill="#b8ff57"/><circle cx="3" cy="11" r="2" fill="#00e5c3"/>
+        </svg>
+      </div>
+      <div class="brand-name">Neuro<span>Shield</span></div>
+    </div>
+    <nav class="nav-tabs">
+      <button class="nav-tab active" onclick="showPage('overview',this)"><span class="tab-num">0</span> Overview</button>
+      <button class="nav-tab" onclick="showPage('phase1',this)"><span class="tab-num">1</span> Anomaly Detection</button>
+      <button class="nav-tab" onclick="showPage('phase2',this)"><span class="tab-num">2</span> Classification</button>
+      <button class="nav-tab" onclick="showPage('phase3',this)"><span class="tab-num">3</span> Self-Healing RL</button>
+      <button class="nav-tab" onclick="window.location.href='/network'"><span class="tab-num">⬡</span> Live Network</button>
+    </nav>
+    <div class="topbar-right">
+      <div class="pill"><div class="dot green"></div>SYSTEM ONLINE</div>
+      <div class="pill"><div class="dot red"></div><span id="threatCount">—</span> ANOMALIES</div>
+      <div class="clock" id="clock">00:00:00</div>
+      <button class="btn-clear-cache" onclick="clearCache()" title="Clear saved models and re-train from scratch">↺ Clear Cache</button>
+    </div>
+  </header>
+
+  <!-- ══ OVERVIEW ══ -->
+  <div class="page active" id="page-overview">
+    <div class="overview-grid">
+      <div class="hero-card">
+        <div class="system-status">
+          <div class="status-icon">🛡️</div>
+          <div class="status-title">Network Protected</div>
+          <div class="status-sub">All 3 phases operational</div>
+        </div>
+        <div class="stat-list">
+          <div class="stat-item">
+            <div class="stat-item-left"><div class="stat-item-label">Dataset Records</div><div class="stat-item-val lime" id="ov-total">—</div></div>
+            <div class="stat-badge neutral">NSL-KDD</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-item-left"><div class="stat-item-label">Phase 1 — RF Accuracy</div><div class="stat-item-val lime" id="ov-p1acc">—</div></div>
+            <div class="stat-badge up">↑ Excellent</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-item-left"><div class="stat-item-label">Phase 2 — ANN Accuracy</div><div class="stat-item-val teal" id="ov-p2acc">—</div></div>
+            <div class="stat-badge up">↑ Strong</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-item-left"><div class="stat-item-label">Anomaly Records</div><div class="stat-item-val rose" id="ov-anomaly">—</div></div>
+            <div class="stat-badge down">detected</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-item-left"><div class="stat-item-label">RL Best Reward</div><div class="stat-item-val amber" id="ov-rl">—</div></div>
+            <div class="stat-badge up">Converged</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-item-left"><div class="stat-item-label">Missing Values</div><div class="stat-item-val lime" id="ov-missing">—</div></div>
+            <div class="stat-badge up">Clean ✓</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card pipeline-card">
+        <div class="card-label">System Pipeline</div>
+        <div class="pipeline">
+          <div class="pipe-node src">
+            <div class="pipe-icon">🗄️</div>
+            <div class="pipe-title">NSL-KDD</div>
+            <div class="pipe-sub" id="pipe-dataset">— rows<br>— features</div>
+          </div>
+          <div class="pipe-arrow"><div class="pipe-arrow-line"></div></div>
+          <div class="pipe-node p1" style="position:relative;padding-top:28px">
+            <div class="pipe-chip lime">PHASE 01</div>
+            <div class="pipe-icon">🌲</div>
+            <div class="pipe-title">Random Forest</div>
+            <div class="pipe-sub">Binary Detection<br>Normal / Anomaly</div>
+          </div>
+          <div class="pipe-arrow"><div class="pipe-arrow-line"></div><div class="pipe-arrow-cond">if anomaly</div></div>
+          <div class="pipe-node p2" style="position:relative;padding-top:28px">
+            <div class="pipe-chip teal">PHASE 02</div>
+            <div class="pipe-icon">🧠</div>
+            <div class="pipe-title">Deep ANN</div>
+            <div class="pipe-sub">Multi-class<br>DoS/Probe/R2L/U2R</div>
+          </div>
+          <div class="pipe-arrow"><div class="pipe-arrow-line"></div></div>
+          <div class="pipe-node p3" style="position:relative;padding-top:28px">
+            <div class="pipe-chip amber">PHASE 03</div>
+            <div class="pipe-icon">🤖</div>
+            <div class="pipe-title">Q-Learning RL</div>
+            <div class="pipe-sub">Self-Healing<br>Block/Alert/Allow</div>
+          </div>
+          <div class="pipe-arrow"><div class="pipe-arrow-line"></div></div>
+          <div class="pipe-node out">
+            <div class="pipe-icon">✅</div>
+            <div class="pipe-title">Healed</div>
+            <div class="pipe-sub">Network<br>Protected</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card feed-card">
+        <div class="feed-header">
+          <div class="card-label" style="margin-bottom:0">
+            Live Event Simulation
+            <span style="font-size:8px;color:var(--dim);margin-left:4px">(real model predictions on NSL-KDD samples)</span>
+          </div>
+          <div class="feed-controls">
+            <button class="btn btn-lime" onclick="runSim()">▶ Simulate</button>
+            <button class="btn btn-ghost" onclick="clearFeed()">Clear</button>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:58px 70px 1fr 80px 70px;gap:8px;padding:4px 10px;margin-bottom:4px">
+          <span style="font-family:var(--ff-mono);font-size:9px;color:var(--muted)">TIME</span>
+          <span style="font-family:var(--ff-mono);font-size:9px;color:var(--muted)">STATUS</span>
+          <span style="font-family:var(--ff-mono);font-size:9px;color:var(--muted)">SRC IP</span>
+          <span style="font-family:var(--ff-mono);font-size:9px;color:var(--muted)">CATEGORY</span>
+          <span style="font-family:var(--ff-mono);font-size:9px;color:var(--muted);text-align:right">ACTION</span>
+        </div>
+        <div class="feed-stream" id="feedStream"></div>
+        <div style="margin-top:10px;padding:10px 12px;background:var(--glass);border:1px solid var(--rim);border-radius:var(--r-sm)">
+          <div style="font-family:var(--ff-mono);font-size:9px;color:var(--muted);line-height:1.7">
+            <span style="color:var(--lime)">▶ Simulate</span> picks random rows from your CSV → runs them through <span style="color:var(--lime)">Phase 1 (RF)</span> to detect anomalies → <span style="color:var(--amber)">Phase 3 (RL agent)</span> decides action. Every row is a <b>real model prediction</b>, not random.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ PHASE 1 ══ -->
+  <div class="page" id="page-phase1">
+    <div class="phase-layout">
+      <div class="phase-hero span-2">
+        <div class="phase-hero-num">01</div>
+        <div class="phase-tag lime">● Phase 01 — ML</div>
+        <div class="phase-hero-title">Anomaly Detection<br>with Random Forest</div>
+        <div class="phase-hero-desc">Binary classifier trained on NSL-KDD. Distinguishes normal traffic from intrusions using 30 decision trees on 41 features. High accuracy reflects NSL-KDD's clean, well-labelled structure — values near 1.0000 are genuine, not a display bug.</div>
+        <div class="acc-ring">
+          <div class="acc-big" style="color:var(--lime)" id="p1-acc">—</div>
+          <div class="acc-sub" id="p1-acc-sub">LOADING…</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-label">Confusion Matrix</div>
+        <div class="cm-grid">
+          <div class="cm-h"></div>
+          <div class="cm-h">PRED: NORMAL</div>
+          <div class="cm-h">PRED: ANOMALY</div>
+          <div class="cm-h" style="font-size:8px;flex-direction:column;gap:2px">ACTUAL<br>NORMAL</div>
+          <div class="cm-cell-box cm-tn"><div class="cm-cell-val" id="cm-tn">—</div><div class="cm-cell-name">TRUE NEG</div></div>
+          <div class="cm-cell-box cm-fp"><div class="cm-cell-val" id="cm-fp">—</div><div class="cm-cell-name">FALSE POS</div></div>
+          <div class="cm-h" style="font-size:8px;flex-direction:column;gap:2px">ACTUAL<br>ANOMALY</div>
+          <div class="cm-cell-box cm-fn"><div class="cm-cell-val" id="cm-fn">—</div><div class="cm-cell-name">FALSE NEG</div></div>
+          <div class="cm-cell-box cm-tp"><div class="cm-cell-val" id="cm-tp">—</div><div class="cm-cell-name">TRUE POS</div></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-label">Classification Report <span style="font-size:8px;color:var(--dim);margin-left:4px">(4 decimal places)</span></div>
+        <table class="mtable">
+          <thead><tr><th>Class</th><th>Precision</th><th>Recall</th><th>F1-Score</th><th>Support</th></tr></thead>
+          <tbody id="p1-report-body"></tbody>
+        </table>
+        <div style="margin-top:20px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+          <div style="padding:12px;background:var(--glass);border:1px solid var(--rim);border-radius:var(--r-sm);text-align:center">
+            <div style="font-family:var(--ff-head);font-size:20px;font-weight:900;color:var(--lime)" id="p1-estimators">—</div>
+            <div style="font-family:var(--ff-mono);font-size:8px;color:var(--muted);margin-top:3px">ESTIMATORS</div>
+          </div>
+          <div style="padding:12px;background:var(--glass);border:1px solid var(--rim);border-radius:var(--r-sm);text-align:center">
+            <div style="font-family:var(--ff-head);font-size:20px;font-weight:900;color:var(--teal)" id="p1-split">70/30</div>
+            <div style="font-family:var(--ff-mono);font-size:8px;color:var(--muted);margin-top:3px">TRAIN/TEST</div>
+          </div>
+          <div style="padding:12px;background:var(--glass);border:1px solid var(--rim);border-radius:var(--r-sm);text-align:center">
+            <div style="font-family:var(--ff-head);font-size:20px;font-weight:900;color:var(--amber)" id="p1-features">—</div>
+            <div style="font-family:var(--ff-mono);font-size:8px;color:var(--muted);margin-top:3px">FEATURES</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ PHASE 2 ══ -->
+  <div class="page" id="page-phase2">
+    <div class="phase-layout">
+      <div class="phase-hero span-2">
+        <div class="phase-hero-num">02</div>
+        <div class="phase-tag teal">● Phase 02 — Deep Learning</div>
+        <div class="phase-hero-title">Attack Classification<br>with Deep Neural Network</div>
+        <div class="phase-hero-desc">Multi-layer ANN classifies anomalies into 4 attack types. Sparse categorical crossentropy with Adam optimizer.</div>
+        <div class="acc-ring">
+          <div class="acc-big" style="color:var(--teal)" id="p2-acc">—</div>
+          <div class="acc-sub" id="p2-acc-sub">LOADING…</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-label">Attack Category Distribution</div>
+        <div class="adist" id="p2-adist"></div>
+        <div style="margin-top:16px;padding:12px;background:var(--glass);border:1px solid var(--rim);border-radius:var(--r-sm)">
+          <div style="font-family:var(--ff-mono);font-size:9px;color:var(--muted);margin-bottom:8px">TOTAL ANOMALY RECORDS</div>
+          <div style="display:flex;gap:16px;flex-wrap:wrap" id="p2-attack-counts"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-label">ANN Architecture</div>
+        <div class="arch-diagram" id="p2-arch"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px">
+          <div style="padding:10px 12px;background:var(--glass);border:1px solid var(--rim);border-radius:var(--r-sm)">
+            <div style="font-family:var(--ff-mono);font-size:9px;color:var(--muted)">OPTIMIZER</div>
+            <div style="font-family:var(--ff-head);font-size:16px;font-weight:900;color:var(--teal);margin-top:2px" id="p2-optimizer">—</div>
+          </div>
+          <div style="padding:10px 12px;background:var(--glass);border:1px solid var(--rim);border-radius:var(--r-sm)">
+            <div style="font-family:var(--ff-mono);font-size:9px;color:var(--muted)">LOSS</div>
+            <div style="font-family:var(--ff-head);font-size:13px;font-weight:900;color:var(--sky);margin-top:2px" id="p2-loss">—</div>
+          </div>
+          <div style="padding:10px 12px;background:var(--glass);border:1px solid var(--rim);border-radius:var(--r-sm)">
+            <div style="font-family:var(--ff-mono);font-size:9px;color:var(--muted)">EPOCHS</div>
+            <div style="font-family:var(--ff-head);font-size:16px;font-weight:900;color:var(--amber);margin-top:2px" id="p2-epochs">—</div>
+          </div>
+          <div style="padding:10px 12px;background:var(--glass);border:1px solid var(--rim);border-radius:var(--r-sm)">
+            <div style="font-family:var(--ff-mono);font-size:9px;color:var(--muted)">BATCH SIZE</div>
+            <div style="font-family:var(--ff-head);font-size:16px;font-weight:900;color:var(--violet);margin-top:2px" id="p2-batch">—</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ PHASE 3 ══ -->
+  <div class="page" id="page-phase3">
+    <div class="phase-layout three-col">
+      <div class="phase-hero span-2">
+        <div class="phase-hero-num">03</div>
+        <div class="phase-tag amber">● Phase 03 — Reinforcement Learning</div>
+        <div class="phase-hero-title">Self-Healing Agent<br>with Q-Learning</div>
+        <div class="phase-hero-desc">Tabular Q-Learning agent learns optimal healing policy from Phase 1 binary predictions. BLOCK anomalies (+10 reward), ALLOW normal traffic (+5 reward).</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Hyperparameters</div>
+        <div class="params-grid">
+          <div class="param-box"><div class="param-sym">α</div><div class="param-val" id="p3-alpha">—</div><div class="param-name">Learning Rate</div></div>
+          <div class="param-box"><div class="param-sym">γ</div><div class="param-val" id="p3-gamma">—</div><div class="param-name">Discount</div></div>
+          <div class="param-box"><div class="param-sym">ε</div><div class="param-val" id="p3-epsilon">—</div><div class="param-name">Exploration</div></div>
+          <div class="param-box"><div class="param-sym">N</div><div class="param-val" id="p3-episodes">—</div><div class="param-name">Episodes</div></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-label">Learned Q-Table</div>
+        <table class="qtable">
+          <thead><tr><th style="text-align:left">State</th><th>Allow</th><th>Block</th><th>Alert</th></tr></thead>
+          <tbody id="p3-qtable-body"></tbody>
+        </table>
+        <div class="policy-grid" id="p3-policy-grid"></div>
+      </div>
+      <div class="card">
+        <div class="card-label">Reward Function</div>
+        <table class="rmatrix">
+          <thead><tr><th style="text-align:left">State \ Action</th><th>ALLOW</th><th>BLOCK</th><th>ALERT</th></tr></thead>
+          <tbody id="p3-rmatrix-body"></tbody>
+        </table>
+        <div style="margin-top:16px;padding:14px;background:var(--glass);border:1px solid var(--rim);border-radius:var(--r-sm)">
+          <div style="font-family:var(--ff-mono);font-size:9px;color:var(--muted);margin-bottom:8px">Q-LEARNING UPDATE RULE</div>
+          <div style="font-family:var(--ff-mono);font-size:11px;color:var(--teal);line-height:1.8">Q(s,a) ← Q(s,a) + α · [r + γ · max Q(s') − Q(s,a)]</div>
+        </div>
+        <div style="margin-top:12px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+          <div style="padding:10px;background:var(--glass);border:1px solid var(--rim);border-radius:var(--r-sm);text-align:center">
+            <div style="font-family:var(--ff-head);font-size:18px;font-weight:900;color:var(--lime)" id="p3-nstates">—</div>
+            <div style="font-family:var(--ff-mono);font-size:8px;color:var(--muted);margin-top:2px">STATES</div>
+          </div>
+          <div style="padding:10px;background:var(--glass);border:1px solid var(--rim);border-radius:var(--r-sm);text-align:center">
+            <div style="font-family:var(--ff-head);font-size:18px;font-weight:900;color:var(--teal)" id="p3-nactions">—</div>
+            <div style="font-family:var(--ff-mono);font-size:8px;color:var(--muted);margin-top:2px">ACTIONS</div>
+          </div>
+          <div style="padding:10px;background:var(--glass);border:1px solid var(--rim);border-radius:var(--r-sm);text-align:center">
+            <div style="font-family:var(--ff-head);font-size:18px;font-weight:900;color:var(--amber)" id="p3-nsamples">—</div>
+            <div style="font-family:var(--ff-mono);font-size:8px;color:var(--muted);margin-top:2px">SAMPLES</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /app -->
+
+<script>
+/* ── CLOCK ── */
+function tick(){ document.getElementById('clock').textContent = new Date().toTimeString().split(' ')[0]; }
+setInterval(tick,1000); tick();
+
+/* ── NAV ── */
+function showPage(id,tab){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('page-'+id).classList.add('active');
+  tab.classList.add('active');
+}
+
+/* ── BG CANVAS ── */
+const canvas=document.getElementById('bgCanvas'),ctx=canvas.getContext('2d');
+let W,H,nodes=[];
+function resize(){ W=canvas.width=window.innerWidth; H=canvas.height=window.innerHeight; }
+resize(); window.addEventListener('resize',()=>{resize();initNodes();});
+function initNodes(){ nodes=[]; const c=Math.floor((W*H)/22000); for(let i=0;i<c;i++) nodes.push({x:Math.random()*W,y:Math.random()*H,vx:(Math.random()-.5)*.35,vy:(Math.random()-.5)*.35,r:Math.random()*2+1,pulse:Math.random()*Math.PI*2}); }
+initNodes();
+function drawBg(){
+  ctx.clearRect(0,0,W,H);
+  for(const n of nodes){ n.x+=n.vx; n.y+=n.vy; n.pulse+=.018; if(n.x<0||n.x>W)n.vx*=-1; if(n.y<0||n.y>H)n.vy*=-1; }
+  for(let i=0;i<nodes.length;i++) for(let j=i+1;j<nodes.length;j++){
+    const dx=nodes[i].x-nodes[j].x,dy=nodes[i].y-nodes[j].y,d=Math.sqrt(dx*dx+dy*dy);
+    if(d<140){ ctx.beginPath();ctx.moveTo(nodes[i].x,nodes[i].y);ctx.lineTo(nodes[j].x,nodes[j].y);ctx.strokeStyle=`rgba(184,255,87,${(1-d/140)*.25})`;ctx.lineWidth=.6;ctx.stroke(); }
+  }
+  for(const n of nodes){ const g=(Math.sin(n.pulse)+1)/2; ctx.beginPath();ctx.arc(n.x,n.y,n.r,0,Math.PI*2);ctx.fillStyle=`rgba(184,255,87,${.3+g*.5})`;ctx.fill(); }
+  requestAnimationFrame(drawBg);
+}
+drawBg();
+
+/* ── HELPERS ── */
+function fmt(n){ if(n>=1e6) return (n/1e6).toFixed(1)+'M'; if(n>=1e3) return (n/1e3).toFixed(1)+'K'; return String(n); }
+// Show accuracy with 4 decimal places so 0.9990 ≠ 1.0000
+function pct4(v){ return (v*100).toFixed(4)+'%'; }
+// Overview uses 2 decimals for clean display
+function pct2(v){ return (v*100).toFixed(2)+'%'; }
+
+/* ── POLL /api/status UNTIL READY ── */
+async function waitForReady(){
+  const title = document.getElementById('loadTitle');
+  const sub   = document.getElementById('loadSub');
+  const tip   = document.getElementById('loadTip');
+
+  while(true){
+    try {
+      const s = await fetch('/api/status').then(r=>r.json());
+      title.textContent = s.status.toUpperCase();
+      if(s.error){
+        sub.textContent = 'Error: ' + s.error;
+        sub.style.color = 'var(--rose)';
+        return;
+      }
+      if(s.ready) break;
+      // Show helpful context per stage
+      if(s.status.includes('Phase 1'))      sub.textContent = 'Training Random Forest with 30 trees on 40K samples…';
+      else if(s.status.includes('Phase 2')) sub.textContent = 'Training MLP neural network on anomaly samples…';
+      else if(s.status.includes('Phase 3')) sub.textContent = 'Running 1000 Q-Learning episodes…';
+      else if(s.status.includes('disk'))    { sub.textContent = 'Models found on disk — loading instantly…'; tip.textContent = ''; }
+      else                                   sub.textContent = 'Preparing dataset (125K rows, 41 features)…';
+    } catch(e){
+      title.textContent = 'WAITING FOR FLASK…';
+      sub.textContent   = 'Make sure python app.py is running in your terminal.';
+    }
+    await new Promise(r=>setTimeout(r,2000));
+  }
+
+  // All ready — fetch data
+  try {
+    const [ov,p1,p2,p3] = await Promise.all([
+      fetch('/api/overview').then(r=>r.json()),
+      fetch('/api/phase1').then(r=>r.json()),
+      fetch('/api/phase2').then(r=>r.json()),
+      fetch('/api/phase3').then(r=>r.json()),
+    ]);
+    if(ov.error||p1.error||p2.error||p3.error) throw new Error(ov.error||p1.error||p2.error||p3.error);
+    populateOverview(ov);
+    populatePhase1(p1);
+    populatePhase2(p2);
+    populatePhase3(p3);
+  } catch(e){
+    document.getElementById('loadTitle').textContent = 'DATA ERROR';
+    document.getElementById('loadSub').textContent   = e.message;
+    document.getElementById('loadSub').style.color   = 'var(--rose)';
+    console.error(e);
+    return;
+  }
+  document.getElementById('loadingOverlay').classList.add('hidden');
+}
+
+/* ── POPULATE OVERVIEW ── */
+function populateOverview(d){
+  document.getElementById('ov-total').textContent   = fmt(d.total_records);
+  document.getElementById('ov-p1acc').textContent   = pct2(d.phase1_accuracy);
+  document.getElementById('ov-p2acc').textContent   = pct2(d.phase2_accuracy);
+  document.getElementById('ov-anomaly').textContent = fmt(d.anomaly_records);
+  document.getElementById('ov-rl').textContent      = '+'+d.rl_best_reward.toFixed(1);
+  document.getElementById('ov-missing').textContent = d.missing_values;
+  document.getElementById('threatCount').textContent= fmt(d.anomaly_records);
+  document.getElementById('pipe-dataset').innerHTML = `${fmt(d.total_records)} rows<br>${d.num_features} features`;
+}
+
+/* ── POPULATE PHASE 1 ── */
+function populatePhase1(d){
+  // 4 decimal places so 99.90% shows as 99.9010% not 100%
+  document.getElementById('p1-acc').textContent     = pct4(d.accuracy);
+  document.getElementById('p1-acc-sub').textContent = `TEST ACCURACY — ${fmt(d.test_samples)} SAMPLES`;
+  document.getElementById('p1-estimators').textContent = d.n_estimators;
+  document.getElementById('p1-features').textContent   = d.n_features;
+
+  const cm = d.cm;
+  document.getElementById('cm-tn').textContent = fmt(cm[0][0]);
+  document.getElementById('cm-fp').textContent = fmt(cm[0][1]);
+  document.getElementById('cm-fn').textContent = fmt(cm[1][0]);
+  document.getElementById('cm-tp').textContent = fmt(cm[1][1]);
+
+  const tbody = document.getElementById('p1-report-body');
+  tbody.innerHTML = '';
+  const colors = {'Normal':'var(--lime)','Anomaly':'var(--rose)','macro_avg':'var(--muted)'};
+  const labels = {'Normal':'Normal','Anomaly':'Anomaly','macro_avg':'Macro avg'};
+  ['Normal','Anomaly','macro_avg'].forEach(cls=>{
+    const r = d.report[cls]; if(!r) return;
+    const color = colors[cls];
+    const barW  = v => Math.round(v*100);
+    // Show 4 decimal places in report
+    tbody.innerHTML += `<tr>
+      <td style="color:${color};font-weight:700">${labels[cls]}</td>
+      <td><span class="mbar-wrap"><span class="mbar" style="width:${barW(r.precision)}%;background:${color}"></span></span>${r.precision.toFixed(4)}</td>
+      <td><span class="mbar-wrap"><span class="mbar" style="width:${barW(r.recall)}%;background:${color}"></span></span>${r.recall.toFixed(4)}</td>
+      <td style="color:${color}">${r.f1.toFixed(4)}</td>
+      <td style="color:var(--muted)">${fmt(r.support)}</td>
+    </tr>`;
+  });
+}
+
+/* ── POPULATE PHASE 2 ── */
+function populatePhase2(d){
+  document.getElementById('p2-acc').textContent     = pct4(d.accuracy);
+  document.getElementById('p2-acc-sub').textContent = 'TEST ACCURACY — MULTI-CLASS (4 CATEGORIES)';
+  document.getElementById('p2-optimizer').textContent = d.optimizer;
+  document.getElementById('p2-loss').textContent    = d.loss;
+  document.getElementById('p2-epochs').textContent  = d.epochs;
+  document.getElementById('p2-batch').textContent   = d.batch_size;
+
+  const catColors = {
+    'DoS':  {bar:'rgba(255,79,109,.5)',  txt:'var(--rose)'},
+    'Probe':{bar:'rgba(56,189,248,.5)',  txt:'var(--sky)'},
+    'R2L':  {bar:'rgba(255,184,48,.5)', txt:'var(--amber)'},
+    'U2R':  {bar:'rgba(167,139,250,.5)',txt:'var(--violet)'},
+  };
+  const adist = document.getElementById('p2-adist');
+  adist.innerHTML = '';
+  for(const [cat,pv] of Object.entries(d.attack_dist)){
+    const c = catColors[cat]||{bar:'rgba(255,255,255,.3)',txt:'var(--txt)'};
+    adist.innerHTML += `<div class="adist-row">
+      <div class="adist-name" style="color:${c.txt}">${cat}</div>
+      <div class="adist-track"><div class="adist-fill" style="width:${pv}%;background:linear-gradient(90deg,${c.bar},${c.bar.replace('.5)','.15)')});color:#fff">${pv}%</div></div>
+      <div class="adist-pct" style="color:${c.txt}">${pv}%</div>
+    </div>`;
+  }
+
+  const counts = document.getElementById('p2-attack-counts');
+  counts.innerHTML = '';
+  for(const [cat,n] of Object.entries(d.attack_counts)){
+    const c = catColors[cat]||{txt:'var(--txt)'};
+    counts.innerHTML += `<div><span style="color:${c.txt};font-family:var(--ff-head);font-size:18px;font-weight:900">${fmt(n)}</span> <span style="font-family:var(--ff-mono);font-size:9px;color:var(--muted)">${cat}</span></div>`;
+  }
+
+  const archColors = ['var(--muted)','var(--teal)','var(--sky)','var(--lime)'];
+  const arch = document.getElementById('p2-arch');
+  arch.innerHTML = '';
+  d.architecture.forEach((layer,i)=>{
+    const color = archColors[i]||'var(--muted)';
+    const nc = Math.min(layer.size,5);
+    let nh = '';
+    for(let n=0;n<nc;n++) nh+=`<div class="arch-node" style="color:${color}"></div>`;
+    if(layer.size>5) nh+=`<div style="font-family:var(--ff-mono);font-size:10px;color:${color};opacity:.5">···</div>`;
+    arch.innerHTML += `<div class="arch-layer">
+      <div class="arch-layer-nodes">${nh}</div>
+      <div class="arch-lsize" style="color:${color}">${layer.size}</div>
+      <div class="arch-lname">${layer.name}${layer.activation?'<br>'+layer.activation:''}</div>
+    </div>`;
+    if(i<d.architecture.length-1) arch.innerHTML += `<div class="arch-arr">→</div>`;
+  });
+}
+
+/* ── POPULATE PHASE 3 ── */
+function populatePhase3(d){
+  document.getElementById('p3-alpha').textContent   = d.alpha;
+  document.getElementById('p3-gamma').textContent   = d.gamma;
+  document.getElementById('p3-epsilon').textContent = d.epsilon;
+  document.getElementById('p3-episodes').textContent= d.episodes>=1000?(d.episodes/1000)+'K':d.episodes;
+  document.getElementById('p3-nstates').textContent = d.n_states;
+  document.getElementById('p3-nactions').textContent= d.n_actions;
+  document.getElementById('p3-nsamples').textContent= fmt(d.n_samples);
+
+  const qtbody = document.getElementById('p3-qtable-body');
+  qtbody.innerHTML = '';
+  const stateClr = {'Normal':'var(--lime)','Anomaly':'var(--rose)'};
+  for(const [state,actions] of Object.entries(d.q_table)){
+    const color = stateClr[state]||'var(--txt)';
+    const best  = d.policy[state];
+    let cells = '';
+    ['Allow','Block','Alert'].forEach(a=>{
+      const v = actions[a]??'—';
+      const isBest = (a===best);
+      cells += `<td class="${isBest?'q-best':v<0?'q-neg':'q-mid'}">${v>0?'+':''}${v}</td>`;
+    });
+    qtbody.innerHTML += `<tr><td class="q-state"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};margin-right:8px;vertical-align:middle;box-shadow:0 0 6px ${color}"></span>${state}</td>${cells}</tr>`;
+  }
+
+  const pg = document.getElementById('p3-policy-grid');
+  pg.innerHTML = '';
+  const pBorder={'Normal':'rgba(184,255,87,0.2)','Anomaly':'rgba(255,79,109,0.2)'};
+  const pBg={'Normal':'rgba(184,255,87,0.04)','Anomaly':'rgba(255,79,109,0.04)'};
+  const aClass={'Allow':'allow','Block':'block','Alert':'allow'};
+  for(const [state,action] of Object.entries(d.policy)){
+    const q = d.q_table[state];
+    const bq = q?q[action]:null;
+    pg.innerHTML += `<div class="policy-box" style="border-color:${pBorder[state]};background:${pBg[state]}">
+      <div class="policy-state-label">State: ${state}</div>
+      <div class="policy-arrow">↓</div>
+      <div class="policy-action-name ${aClass[action]||'allow'}">${action.toUpperCase()}</div>
+      <div class="policy-reward">Max Q: ${bq!==null?(bq>0?'+':'')+bq:'—'}</div>
+    </div>`;
+  }
+
+  const rb = document.getElementById('p3-rmatrix-body');
+  rb.innerHTML = '';
+  for(const [state,actions] of Object.entries(d.reward_matrix)){
+    let cells='';
+    ['Allow','Block','Alert'].forEach(a=>{
+      const v=actions[a];
+      cells+=`<td class="${v>0?'r-pos':v<0?'r-neg':'r-mid'}">${v>0?'+':''}${v}</td>`;
+    });
+    rb.innerHTML += `<tr><td style="color:${stateClr[state]||'var(--txt)'}">${state}</td>${cells}</tr>`;
+  }
+}
+
+/* ── LIVE SIMULATION ── */
+let simRunning = false;
+function clearFeed(){ document.getElementById('feedStream').innerHTML=''; simRunning=false; }
+
+async function runSim(){
+  if(simRunning) return;
+  simRunning = true;
+  try {
+    const events = await fetch('/api/simulate?n=20').then(r=>r.json());
+    if(events.error) throw new Error(events.error);
+    events.forEach((ev,i)=>setTimeout(()=>addRealRow(ev), i*180));
+    setTimeout(()=>simRunning=false, events.length*180+200);
+  } catch(e){
+    console.error('Simulation error:',e);
+    simRunning = false;
+  }
+}
+
+function addRealRow(ev){
+  const feed = document.getElementById('feedStream');
+  const time = new Date().toTimeString().split(' ')[0];
+  const isAnom = ev.status==='ANOMALY';
+  const actCls = ev.action==='ALLOW'?'allow':ev.action==='BLOCK'?'block':'alert';
+  const row = document.createElement('div');
+  row.className = 'feed-row'+(isAnom?' anomaly':'');
+  row.innerHTML = `
+    <span class="feed-time">${time}</span>
+    <span class="feed-badge ${isAnom?'bad':'ok'}">${ev.status}</span>
+    <span class="feed-ip">${ev.ip}</span>
+    <span class="feed-class">${ev.category}</span>
+    <span class="feed-act ${actCls}">${ev.action}</span>`;
+  feed.insertBefore(row, feed.firstChild);
+  if(feed.children.length>40) feed.removeChild(feed.lastChild);
+}
+
+/* ── CLEAR CACHE ── */
+async function clearCache(){
+  if(!confirm('This will delete saved models and force a full re-train on next restart. Continue?')) return;
+  await fetch('/api/clear_cache', {method:'POST'});
+  alert('Cache cleared! Stop app.py (Ctrl+C) and run python app.py again to re-train.');
+}
+
+/* ── INIT ── */
+window.addEventListener('load', waitForReady);
+</script>
+</body>
+</html>

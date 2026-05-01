@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NeuroShield — Live Network</title>
+<style>
+  /* ── Fonts & Reset ─────────────────────────────────────────────── */
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:       #0a0c0f;
+    --bg2:      #111418;
+    --bg3:      #181c22;
+    --border:   rgba(255,255,255,0.07);
+    --border2:  rgba(255,255,255,0.13);
+    --text:     #d4d0c8;
+    --muted:    #5a5f6a;
+    --allow:    #2aad6e;
+    --allow-bg: rgba(42,173,110,0.10);
+    --block:    #e24b4a;
+    --block-bg: rgba(226,75,74,0.10);
+    --alert:    #e8a12a;
+    --alert-bg: rgba(232,161,42,0.10);
+    --accent:   #378ADD;
+    --fw:       #7f77dd;
+    --server:   #1d9e75;
+    --host:     #5f5e5a;
+    --ext:      #e24b4a;
+    --font-ui:  'Space Grotesk', sans-serif;
+    --font-mono:'IBM Plex Mono', monospace;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-ui);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Header ─────────────────────────────────────────────────────── */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 24px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg2);
+    flex-shrink: 0;
+  }
+  .logo {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: #fff;
+  }
+  .logo span { color: var(--accent); }
+  .nav-links { display: flex; gap: 8px; }
+  .nav-links a {
+    font-size: 12px;
+    color: var(--muted);
+    text-decoration: none;
+    padding: 5px 12px;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    transition: all 0.15s;
+  }
+  .nav-links a:hover { color: var(--text); border-color: var(--border2); }
+  .nav-links a.active { color: var(--accent); border-color: var(--accent); background: rgba(55,138,221,0.08); }
+
+  /* ── Loading overlay ─────────────────────────────────────────────── */
+  #loading-overlay {
+    position: fixed; inset: 0; z-index: 100;
+    background: var(--bg);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 20px;
+    transition: opacity 0.4s;
+  }
+  #loading-overlay.hidden { opacity: 0; pointer-events: none; }
+  .spinner {
+    width: 36px; height: 36px;
+    border: 2px solid var(--border2);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #loading-msg { font-size: 13px; color: var(--muted); font-family: var(--font-mono); }
+  #loading-bar-wrap {
+    width: 220px; height: 2px;
+    background: var(--border2); border-radius: 2px; overflow: hidden;
+  }
+  #loading-bar {
+    height: 100%; width: 0%;
+    background: var(--accent);
+    transition: width 0.4s ease;
+    border-radius: 2px;
+  }
+
+  /* ── Main layout ─────────────────────────────────────────────────── */
+  main {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    grid-template-rows: auto 1fr;
+    gap: 0;
+    overflow: hidden;
+  }
+
+  /* ── Stat bar ─────────────────────────────────────────────────────── */
+  .stat-bar {
+    grid-column: 1 / -1;
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg2);
+  }
+  .stat-item {
+    flex: 1;
+    padding: 10px 20px;
+    border-right: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .stat-item:last-child { border-right: none; }
+  .stat-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  }
+  .stat-label { font-size: 11px; color: var(--muted); font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.06em; }
+  .stat-val { font-size: 22px; font-weight: 600; color: #fff; font-family: var(--font-mono); line-height: 1; }
+
+  /* ── Canvas area ─────────────────────────────────────────────────── */
+  .canvas-wrap {
+    position: relative;
+    background: var(--bg);
+    overflow: hidden;
+  }
+  #netcanvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  /* ── Tooltip ─────────────────────────────────────────────────────── */
+  #tooltip {
+    display: none;
+    position: absolute;
+    pointer-events: none;
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 12px;
+    color: var(--text);
+    min-width: 160px;
+    z-index: 20;
+    font-family: var(--font-mono);
+  }
+  #tooltip b { color: #fff; font-family: var(--font-ui); font-size: 13px; }
+
+  /* ── Side panel ──────────────────────────────────────────────────── */
+  .side-panel {
+    border-left: 1px solid var(--border);
+    background: var(--bg2);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .panel-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+  .panel-title { font-size: 11px; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: 0.07em; }
+  .live-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--allow);
+    animation: pulse-dot 1.4s ease-in-out infinite;
+  }
+  @keyframes pulse-dot {
+    0%,100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.7); }
+  }
+
+  /* Controls */
+  .controls {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    flex-shrink: 0;
+  }
+  .ctrl-row { display: flex; gap: 8px; }
+  .btn {
+    font-family: var(--font-ui);
+    font-size: 12px;
+    font-weight: 500;
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--border2);
+    background: var(--bg3);
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.15s;
+    flex: 1;
+    text-align: center;
+  }
+  .btn:hover { border-color: var(--accent); color: #fff; }
+  .btn.danger:hover { border-color: var(--block); color: var(--block); }
+  .btn.paused { border-color: var(--alert); color: var(--alert); }
+
+  .speed-row { display: flex; align-items: center; gap: 10px; }
+  .speed-label { font-size: 11px; color: var(--muted); font-family: var(--font-mono); white-space: nowrap; }
+  input[type=range] {
+    flex: 1; accent-color: var(--accent); cursor: pointer;
+  }
+  #speed-val { font-size: 11px; color: var(--muted); font-family: var(--font-mono); min-width: 36px; text-align: right; }
+
+  /* Legend */
+  .legend {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    flex-shrink: 0;
+  }
+  .legend-row { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); }
+  .legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .legend-rect { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+
+  /* Event log */
+  .log-wrap { flex: 1; overflow-y: auto; padding: 8px 0; }
+  .log-entry {
+    padding: 5px 16px;
+    border-bottom: 1px solid var(--border);
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    animation: slideIn 0.2s ease;
+    transition: background 0.15s;
+  }
+  .log-entry:hover { background: var(--bg3); }
+  @keyframes slideIn { from { opacity:0; transform: translateX(8px); } to { opacity:1; transform: none; } }
+  .log-ip { color: var(--text); min-width: 90px; }
+  .log-svc { color: var(--muted); flex: 1; }
+  .log-cat { font-size: 10px; }
+  .log-action { font-weight: 600; font-size: 10px; text-align: right; min-width: 36px; }
+  .log-wrap::-webkit-scrollbar { width: 4px; }
+  .log-wrap::-webkit-scrollbar-track { background: transparent; }
+  .log-wrap::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<!-- Loading overlay -->
+<div id="loading-overlay">
+  <div style="font-size:13px;font-weight:600;color:#fff;letter-spacing:0.05em">NEUROSHIELD</div>
+  <div class="spinner"></div>
+  <div id="loading-msg">Connecting to backend…</div>
+  <div id="loading-bar-wrap"><div id="loading-bar"></div></div>
+</div>
+
+<!-- Header -->
+<header>
+  <div class="logo">Neuro<span>Shield</span> &nbsp;/&nbsp; <span style="color:var(--muted);font-weight:400;font-size:13px">Live Network</span></div>
+  <nav class="nav-links">
+    <a href="/">Dashboard</a>
+    <a href="/network" class="active">Live Network</a>
+  </nav>
+</header>
+
+<!-- Main -->
+<main>
+
+  <!-- Stat bar -->
+  <div class="stat-bar">
+    <div class="stat-item">
+      <div class="stat-dot" style="background:var(--accent)"></div>
+      <div>
+        <div class="stat-label">Packets</div>
+        <div class="stat-val" id="s-total">0</div>
+      </div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-dot" style="background:var(--allow)"></div>
+      <div>
+        <div class="stat-label">Allowed</div>
+        <div class="stat-val" id="s-allow" style="color:var(--allow)">0</div>
+      </div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-dot" style="background:var(--block)"></div>
+      <div>
+        <div class="stat-label">Blocked</div>
+        <div class="stat-val" id="s-block" style="color:var(--block)">0</div>
+      </div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-dot" style="background:var(--alert)"></div>
+      <div>
+        <div class="stat-label">Alerts</div>
+        <div class="stat-val" id="s-alert" style="color:var(--alert)">0</div>
+      </div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-dot" style="background:var(--block)"></div>
+      <div>
+        <div class="stat-label">Anomaly rate</div>
+        <div class="stat-val" id="s-rate" style="color:var(--muted)">—</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Canvas -->
+  <div class="canvas-wrap">
+    <canvas id="netcanvas"></canvas>
+    <div id="tooltip"></div>
+  </div>
+
+  <!-- Side panel -->
+  <div class="side-panel">
+    <div class="panel-header">
+      <span class="panel-title">Traffic log</span>
+      <div class="live-dot" id="live-dot"></div>
+    </div>
+
+    <div class="controls">
+      <div class="ctrl-row">
+        <button class="btn" id="btn-toggle" onclick="toggleSim()">⏸ Pause</button>
+        <button class="btn danger" onclick="injectAttack()">⚡ Inject attack</button>
+      </div>
+      <div class="speed-row">
+        <span class="speed-label">Speed</span>
+        <input type="range" id="speed-sl" min="300" max="2500" value="1000" step="100"
+               oninput="simDelay=parseInt(this.value);document.getElementById('speed-val').textContent=this.value+'ms'">
+        <span id="speed-val">1000ms</span>
+      </div>
+    </div>
+
+    <div class="legend">
+      <div class="legend-row"><div class="legend-dot" style="background:var(--fw)"></div>Firewall</div>
+      <div class="legend-row"><div class="legend-dot" style="background:var(--server)"></div>Server</div>
+      <div class="legend-row"><div class="legend-dot" style="background:var(--host)"></div>Workstation</div>
+      <div class="legend-row"><div class="legend-dot" style="background:var(--ext)"></div>External / Internet</div>
+      <div style="height:4px"></div>
+      <div class="legend-row"><div class="legend-dot" style="background:var(--allow)"></div>Allow — normal traffic</div>
+      <div class="legend-row"><div class="legend-dot" style="background:var(--block)"></div>Block — RF flagged anomaly</div>
+      <div class="legend-row"><div class="legend-dot" style="background:var(--alert)"></div>Alert — Q-agent secondary action</div>
+    </div>
+
+    <div class="log-wrap" id="log-wrap">
+      <div style="padding:12px 16px;font-size:11px;color:var(--muted);font-family:var(--font-mono)">— waiting for traffic —</div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+/* ── Canvas setup ──────────────────────────────────────────────────── */
+const canvas = document.getElementById('netcanvas');
+const ctx    = canvas.getContext('2d');
+let W = 0, H = 0;
+
+function resizeCanvas() {
+  const wrap = canvas.parentElement;
+  W = wrap.clientWidth;
+  H = wrap.clientHeight;
+  canvas.width  = W * devicePixelRatio;
+  canvas.height = H * devicePixelRatio;
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.scale(devicePixelRatio, devicePixelRatio);
+  layoutNodes();
+}
+
+/* ── Node definitions (positions computed relative to canvas size) ── */
+const NODE_DEFS = [
+  { id:'EXT',   label:'Internet',    rx:0.50, ry:0.10, type:'ext'    },
+  { id:'FW',    label:'Firewall',    rx:0.50, ry:0.28, type:'fw'     },
+  { id:'SRV1',  label:'Web server',  rx:0.25, ry:0.50, type:'server' },
+  { id:'SRV2',  label:'DB server',   rx:0.75, ry:0.50, type:'server' },
+  { id:'WS1',   label:'WS-1',        rx:0.10, ry:0.78, type:'host'   },
+  { id:'WS2',   label:'WS-2',        rx:0.33, ry:0.78, type:'host'   },
+  { id:'WS3',   label:'WS-3',        rx:0.67, ry:0.78, type:'host'   },
+  { id:'WS4',   label:'WS-4',        rx:0.90, ry:0.78, type:'host'   },
+];
+const EDGES = [
+  ['EXT','FW'],
+  ['FW','SRV1'],['FW','SRV2'],
+  ['SRV1','WS1'],['SRV1','WS2'],
+  ['SRV2','WS3'],['SRV2','WS4'],
+];
+
+let nodes = {};
+function layoutNodes() {
+  NODE_DEFS.forEach(d => {
+    nodes[d.id] = { ...d, x: d.rx * W, y: d.ry * H };
+  });
+}
+
+/* ── Colors ─────────────────────────────────────────────────────────── */
+const C = {
+  fw:     '#7f77dd',
+  server: '#1d9e75',
+  host:   '#5a5f6a',
+  ext:    '#e24b4a',
+  allow:  '#2aad6e',
+  block:  '#e24b4a',
+  alert:  '#e8a12a',
+  accent: '#378ADD',
+  edge:   'rgba(255,255,255,0.08)',
+  edgeActive: 'rgba(255,255,255,0.25)',
+  bg:     '#0a0c0f',
+  text:   '#d4d0c8',
+  muted:  '#4a4f5a',
+  nodeBg: '#181c22',
+};
+
+function nodeColor(type) { return C[type] || C.host; }
+function actionColor(a) {
+  if(a==='BLOCK') return C.block;
+  if(a==='ALERT') return C.alert;
+  return C.allow;
+}
+
+/* ── State ──────────────────────────────────────────────────────────── */
+let packets     = [];
+let badges      = [];
+let activeEdges = {};          // key -> { ts, color }
+let stats       = { total:0, allow:0, block:0, alert:0 };
+let logCount    = 0;
+let running     = true;
+let simDelay    = 1000;
+let simTimer    = null;
+let hoveredNode = null;
+
+/* ── Drawing ─────────────────────────────────────────────────────────── */
+function nodeRadius(type) { return type==='fw' ? 28 : type==='ext' ? 22 : 18; }
+
+function drawEdges() {
+  EDGES.forEach(([a, b]) => {
+    const na = nodes[a], nb = nodes[b];
+    const key = [a,b].sort().join('--');
+    const ae  = activeEdges[key];
+    const isActive = ae && (Date.now() - ae.ts < 900);
+
+    ctx.beginPath();
+    ctx.moveTo(na.x, na.y);
+    ctx.lineTo(nb.x, nb.y);
+    ctx.lineWidth = isActive ? 1.5 : 0.5;
+    ctx.strokeStyle = isActive ? ae.color : C.edge;
+
+    if(isActive) {
+      ctx.setLineDash([6, 6]);
+      ctx.lineDashOffset = -(Date.now() / 1000 * 36 % 24);
+      ctx.globalAlpha = 0.7;
+    } else {
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+  });
+}
+
+function drawNodes() {
+  Object.values(nodes).forEach(n => {
+    const r  = nodeRadius(n.type);
+    const hl = n === hoveredNode;
+    const nc = nodeColor(n.type);
+
+    /* ring glow on hover */
+    if(hl) {
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, r + 6, 0, Math.PI*2);
+      ctx.strokeStyle = nc;
+      ctx.lineWidth = 1;
+      ctx.globalAlpha = 0.3;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+
+    /* node circle */
+    ctx.beginPath();
+    ctx.arc(n.x, n.y, r, 0, Math.PI*2);
+    ctx.fillStyle = C.nodeBg;
+    ctx.fill();
+    ctx.strokeStyle = nc;
+    ctx.lineWidth = hl ? 2 : 1;
+    ctx.globalAlpha = hl ? 1 : 0.8;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    /* icon dot */
+    ctx.beginPath();
+    ctx.arc(n.x, n.y, r * 0.35, 0, Math.PI*2);
+    ctx.fillStyle = nc;
+    ctx.globalAlpha = 0.9;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    /* label below */
+    ctx.font = `500 11px 'Space Grotesk', sans-serif`;
+    ctx.fillStyle = C.text;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText(n.label, n.x, n.y + r + 6);
+  });
+}
+
+function drawPackets() {
+  packets.forEach(p => {
+    const na = nodes[p.from], nb = nodes[p.to];
+    if(!na || !nb) return;
+    const t  = p.progress;
+    const x  = na.x + (nb.x - na.x) * t;
+    const y  = na.y + (nb.y - na.y) * t;
+
+    /* trail */
+    const x0 = na.x + (nb.x - na.x) * Math.max(0, t - 0.12);
+    const y0 = na.y + (nb.y - na.y) * Math.max(0, t - 0.12);
+    const grad = ctx.createLinearGradient(x0, y0, x, y);
+    grad.addColorStop(0, 'transparent');
+    grad.addColorStop(1, p.color + 'aa');
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x, y);
+    ctx.strokeStyle = grad;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    /* dot */
+    ctx.beginPath();
+    ctx.arc(x, y, 5, 0, Math.PI*2);
+    ctx.fillStyle = p.color;
+    ctx.globalAlpha = 0.95;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    /* floating label mid-path */
+    if(t > 0.3 && t < 0.75) {
+      ctx.font = `500 10px 'IBM Plex Mono', monospace`;
+      ctx.fillStyle = p.color;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(p.tag, x + 8, y - 7);
+    }
+  });
+}
+
+function drawBadges() {
+  badges.forEach(b => {
+    if(b.opacity <= 0) return;
+    ctx.globalAlpha = Math.min(b.opacity, 1);
+    ctx.font = `600 11px 'Space Grotesk', sans-serif`;
+    const tw  = ctx.measureText(b.text).width;
+    const bw  = tw + 12, bh = 18;
+    const bx  = b.x - bw/2, by = b.y - bh/2;
+
+    ctx.fillStyle = b.bg;
+    ctx.beginPath();
+    ctx.roundRect(bx, by, bw, bh, 4);
+    ctx.fill();
+
+    ctx.fillStyle = b.fg;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(b.text, b.x, b.y);
+    ctx.globalAlpha = 1;
+  });
+}
+
+function render() {
+  ctx.clearRect(0, 0, W, H);
+  drawEdges();
+  drawNodes();
+  drawPackets();
+  drawBadges();
+  requestAnimationFrame(render);
+}
+
+/* ── Packet physics ─────────────────────────────────────────────────── */
+function tickPackets() {
+  packets = packets.filter(p => {
+    p.progress += p.speed;
+    if(p.progress >= 1) {
+      const nd = nodes[p.to];
+      badges.push({
+        x: nd.x, y: nd.y - nodeRadius(nd.type) - 16,
+        text: p.action,
+        bg: p.action==='BLOCK' ? 'rgba(226,75,74,0.18)' :
+            p.action==='ALERT' ? 'rgba(232,161,42,0.18)' :
+                                 'rgba(42,173,110,0.18)',
+        fg: actionColor(p.action),
+        opacity: 1.6,
+      });
+      return false;
+    }
+    return true;
+  });
+  badges = badges.filter(b => { b.opacity -= 0.022; b.y -= 0.5; return b.opacity > 0; });
+  setTimeout(tickPackets, 16);
+}
+
+/* ── Routing logic ─────────────────────────────────────────────────── */
+/* 
+  Routing rules that mirror real network topology:
+  - External anomalies always come in through EXT → FW
+  - Internal normal flows pick a realistic edge pair
+*/
+function pickRoute(ev) {
+  if(ev.status === 'ANOMALY') {
+    return ['EXT', 'FW'];
+  }
+  /* normal traffic — pick a realistic internal edge */
+  const internal = [
+    ['FW','SRV1'],['FW','SRV2'],
+    ['SRV1','WS1'],['SRV1','WS2'],
+    ['SRV2','WS3'],['SRV2','WS4'],
+  ];
+  return internal[Math.floor(Math.random() * internal.length)];
+}
+
+function spawnPacket(ev) {
+  const [from, to] = pickRoute(ev);
+  const isAnomaly  = ev.status === 'ANOMALY';
+  const action     = ev.action;           /* directly from RF + Q-agent */
+  const color      = actionColor(action);
+  const tag        = isAnomaly ? (ev.category || 'Attack') : ev.service;
+
+  const key = [from, to].sort().join('--');
+  activeEdges[key] = { ts: Date.now(), color };
+
+  packets.push({
+    from, to,
+    progress: 0,
+    speed: 0.016 + Math.random() * 0.010,
+    color, action, tag, ev,
+    isAnomaly,
+  });
+
+  stats.total++;
+  if(action === 'BLOCK') stats.block++;
+  else if(action === 'ALERT') stats.alert++;
+  else stats.allow++;
+
+  updateStats();
+  appendLog(ev, action, color);
+}
+
+/* ── Backend polling ─────────────────────────────────────────────────── */
+async function fetchAndSpawn() {
+  try {
+    const res  = await fetch('/api/simulate?n=1');
+    if(!res.ok) return;
+    const data = await res.json();
+    if(Array.isArray(data) && data.length > 0) {
+      spawnPacket(data[0]);
+    }
+  } catch(e) {
+    console.warn('[NeuroShield] fetch error:', e);
+  }
+}
+
+function scheduleSim() {
+  if(!running) return;
+  simTimer = setTimeout(async () => {
+    await fetchAndSpawn();
+    scheduleSim();
+  }, simDelay + (Math.random() * 400 - 200));
+}
+
+/* ── Attack injection ─────────────────────────────────────────────────── */
+async function injectAttack() {
+  /* Force-fetch one sample; if normal, override routing to show as attack from EXT */
+  try {
+    const res  = await fetch('/api/simulate?n=5');
+    const data = await res.json();
+    /* Find first anomaly in batch, or use first item and force routing */
+    const anomaly = data.find(d => d.status === 'ANOMALY') || { ...data[0], status:'ANOMALY', action:'BLOCK' };
+    spawnPacket(anomaly);
+  } catch(e) {
+    console.warn(e);
+  }
+}
+
+/* ── UI helpers ─────────────────────────────────────────────────────── */
+function updateStats() {
+  document.getElementById('s-total').textContent = stats.total;
+  document.getElementById('s-allow').textContent = stats.allow;
+  document.getElementById('s-block').textContent = stats.block;
+  document.getElementById('s-alert').textContent = stats.alert;
+  const rate = stats.total ? Math.round((stats.block + stats.alert) / stats.total * 100) : 0;
+  document.getElementById('s-rate').textContent = rate + '%';
+}
+
+function appendLog(ev, action, color) {
+  const wrap = document.getElementById('log-wrap');
+  if(logCount === 0) wrap.innerHTML = '';
+  logCount++;
+  if(wrap.children.length > 80) wrap.removeChild(wrap.firstChild);
+
+  const row = document.createElement('div');
+  row.className = 'log-entry';
+  const catHtml = ev.status==='ANOMALY'
+    ? `<span class="log-cat" style="color:${color}">[${ev.category || '—'}]</span>`
+    : '';
+  row.innerHTML = `
+    <span class="log-ip">${ev.ip}</span>
+    <span class="log-svc">${ev.proto}/${ev.service}</span>
+    ${catHtml}
+    <span class="log-action" style="color:${color}">${action}</span>
+  `;
+  wrap.appendChild(row);
+  wrap.scrollTop = wrap.scrollHeight;
+}
+
+function toggleSim() {
+  running = !running;
+  const btn = document.getElementById('btn-toggle');
+  const dot = document.getElementById('live-dot');
+  if(running) {
+    btn.textContent = '⏸ Pause';
+    btn.classList.remove('paused');
+    dot.style.animationPlayState = 'running';
+    scheduleSim();
+  } else {
+    btn.textContent = '▶ Resume';
+    btn.classList.add('paused');
+    dot.style.animationPlayState = 'paused';
+    clearTimeout(simTimer);
+  }
+}
+
+/* ── Hover tooltip ─────────────────────────────────────────────────── */
+canvas.addEventListener('mousemove', e => {
+  const rect = canvas.getBoundingClientRect();
+  const mx   = e.clientX - rect.left;
+  const my   = e.clientY - rect.top;
+  const tip  = document.getElementById('tooltip');
+  hoveredNode = null;
+
+  for(const n of Object.values(nodes)) {
+    const r = nodeRadius(n.type);
+    if(Math.hypot(mx - n.x, my - n.y) <= r) {
+      hoveredNode = n;
+      const active = packets.filter(p => p.from===n.id || p.to===n.id).length;
+      tip.style.display = 'block';
+      tip.style.left    = (e.clientX - rect.left + 14) + 'px';
+      tip.style.top     = (e.clientY - rect.top  - 12) + 'px';
+      tip.innerHTML     = `<b>${n.label}</b><br><span style="color:var(--muted)">${n.id} · ${active} active flow${active!==1?'s':''}</span>`;
+      return;
+    }
+  }
+  tip.style.display = 'none';
+});
+canvas.addEventListener('mouseleave', () => {
+  hoveredNode = null;
+  document.getElementById('tooltip').style.display = 'none';
+});
+
+/* ── Loading / readiness ─────────────────────────────────────────────── */
+const overlay  = document.getElementById('loading-overlay');
+const loadMsg  = document.getElementById('loading-msg');
+const loadBar  = document.getElementById('loading-bar');
+let loadProgress = 0;
+
+async function waitForReady() {
+  try {
+    const res  = await fetch('/api/status');
+    const data = await res.json();
+
+    loadProgress = Math.min(loadProgress + 12, 88);
+    loadBar.style.width = loadProgress + '%';
+    loadMsg.textContent = data.status || 'Loading…';
+
+    if(data.ready) {
+      loadBar.style.width = '100%';
+      setTimeout(() => {
+        overlay.classList.add('hidden');
+        scheduleSim();
+      }, 400);
+    } else if(data.error) {
+      loadMsg.textContent = '❌ ' + data.error;
+    } else {
+      setTimeout(waitForReady, 1800);
+    }
+  } catch(e) {
+    loadMsg.textContent = '⚠ Cannot reach Flask server. Is app.py running?';
+    setTimeout(waitForReady, 3000);
+  }
+}
+
+/* ── Boot ─────────────────────────────────────────────────────────────── */
+window.addEventListener('resize', () => { ctx.resetTransform(); resizeCanvas(); });
+resizeCanvas();
+render();
+tickPackets();
+waitForReady();
+</script>
+</body>
+</html>
